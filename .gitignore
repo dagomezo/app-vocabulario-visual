@@ -1,0 +1,31 @@
+# Dependencias y builds
+node_modules/
+dist/
+build/
+.vite/
+
+# Variables de entorno (secretos)
+.env
+.env.local
+.env.*.local
+
+# Sistema / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+
+# Cursor / agentes
+.cursor/
+agent-transcripts/
+
+# Assets locales de referencia (copias ya están en shell/src/assets)
+imagenes/
+
+# Documentos personales / no del proyecto
+modulo-palabras/img/
+
+# Carpeta de trabajo local (el código activo está en shell/)
+Rediseño de página web/

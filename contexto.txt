@@ -1,0 +1,370 @@
+SEÑAS APP — CONTEXTO COMPLETO PARA IA
+======================================
+
+1. PROPÓSITO
+   App web PÚBLICA para aprender lengua de señas mediante juegos interactivos
+   (flashcards, quiz, memoria, unir). Sin login de alumnos — sesiones anónimas.
+   Solo el profesor/admin necesita autenticarse para gestionar contenido.
+
+2. ARQUITECTURA
+   Frontend (Rediseño): React 18 + Vite 6 + Tailwind v4 + shadcn/ui (Rediseño de página web/) → localhost:5173
+   Backend:             Express 5 + MongoDB/Mongoose (modulo-palabras/) → localhost:3001
+   BD:                  MongoDB Atlas (nube)
+
+3. ESTRUCTURA DE CARPETAS
+   app-vocabulario-visual/
+   ├── .gitignore
+   ├── contexto.txt                          ← ESTE ARCHIVO
+   ├── modulo-palabras/                      ← Backend (Express 5 + MongoDB)
+   │   ├── .env                              ← Credenciales (NO subir a git)
+   │   ├── .gitignore
+   │   ├── package.json
+   │   └── src/
+   │       ├── index.js                      ← Entry point Express (helmet, rate-limit, errorHandler)
+   │       ├── seed.js                       ← Script para crear datos de prueba
+   │       ├── middleware/
+   │       │   ├── auth.js                   ← authMiddleware + requireProfesor + validateObjectId
+   │       │   └── errorHandler.js           ← Manejo centralizado de errores
+   │       ├── models/
+   │       │   ├── Usuario.js                ← profesor/admin (ya no se usan alumnos con login)
+   │       │   ├── Categoria.js
+   │       │   ├── Nivel.js
+   │       │   ├── Flashcard.js
+   │       │   ├── Progreso.js               ← SM-2 tracking (legacy)
+   │       │   ├── Sesion.js                 ← Sesiones anónimas de niños
+   │       │   ├── Actividad.js
+   │       │   └── ActividadJuego.js
+   │       ├── routes/
+   │       │   ├── auth.js                   ← /login (admin), /me, /logout
+   │       │   ├── alumnos.js                ← CRUD alumnos (legacy)
+   │       │   ├── categorias.js             ← CRUD categorías (solo profesor)
+   │       │   ├── niveles.js                ← CRUD niveles (solo profesor)
+   │       │   ├── flashcards.js             ← CRUD flashcards (solo profesor)
+   │       │   ├── progreso.js               ← /analiticas (ahora global vía Sesion)
+   │       │   ├── public.js                 ← Endpoints públicos (sin auth)
+   │       │   ├── sesiones.js               ← Sesiones anónimas POST/GET
+   │       │   ├── upload.js                 ← Cloudinary signature
+   │       │   └── actividad.js
+   │       └── utils/
+   │           ├── sm2.js                    ← Algoritmo SM-2
+   │           ├── resumenInicioAlumno.js    ← resumenCalidadFlashcards (global)
+   │           └── ...
+   │
+   ├── shell/                                ← FRONTEND ACTIVO (React 18 + Vite 6 + Tailwind v4)
+   │   ├── .env.example
+   │   ├── package.json
+   │   └── src/app/                          ← Páginas, componentes, admin responsive
+   │
+   └── Rediseño de página web/               ← Copia de trabajo local (mismo contenido que shell/)
+
+4. MODELOS DE DATOS (MongoDB/Mongoose)
+
+   Sesion (sesiones anónimas de niños — modelo principal para stats):
+   {
+     _id, sessionId (UUID único), deviceId,
+     nombreAlumno (opcional), avatar (opcional),
+     palabras: [{ palabraId, acertada, juegoTipo, timestamp }],
+     juegosCompletados: [{ tipo, categoriaId, total, correctas, timestamp }]
+   }
+
+   Usuario (solo para profesores/admin):
+   { _id, nombre, rol (superadmin|profesor), pin_hash (bcrypt), deletedAt }
+
+   Categoria:  { _id, nombre, icono, descripcion, deletedAt }
+   Nivel:      { _id, nombre, orden, categoria_id (ref), config: { max_repasos_diarios, max_tarjetas_nuevas }, deletedAt }
+   Flashcard:  { _id, palabra, descripcion, imagen_url, video_url, categoria_id (ref), nivel_id (ref), creado_por (ref), deletedAt }
+
+5. API ENDPOINTS — COMPLETO
+
+   PÚBLICOS (sin autenticación):
+     GET  /api/public/categorias           → todas las categorías
+     GET  /api/public/niveles              → ?categoria_id (filtro opcional)
+     GET  /api/public/palabras             → ?categoria_id&nivel_id&busqueda&page&limit (paginado)
+     GET  /api/public/palabras/:id         → detalle de una palabra
+
+   SESIONES ANÓNIMAS (sin autenticación):
+     POST /api/sesiones                    → crear/actualizar sesión { sessionId, deviceId }
+     POST /api/sesiones/palabra            → registrar intento { sessionId, palabraId, acertada, juegoTipo }
+     POST /api/sesiones/juego              → registrar juego completado { sessionId, tipo, categoriaId, total, correctas }
+     GET  /api/sesiones/:sessionId         → obtener stats de la sesión
+
+   AUTH (admin/profesor):
+     POST /api/auth/login                   → { nombre, pin } → cookie JWT
+     GET  /api/auth/me                     → datos del admin logueado
+     POST /api/auth/logout                 → limpiar cookie
+
+   ADMIN (requiere cookie JWT — requireProfesor en escritura):
+     GET    /api/categorias                → listar
+     POST   /api/categorias                → crear { nombre, icono }
+     PUT    /api/categorias/:id            → editar
+     DELETE /api/categorias/:id            → soft delete (cascade a niveles y flashcards)
+     GET    /api/niveles                   → listar (?categoria_id)
+     POST   /api/niveles                   → crear { nombre, categoria_id }
+     PUT    /api/niveles/:id               → editar { nombre }
+     DELETE /api/niveles/:id               → soft delete
+     GET    /api/flashcards                → listar (?categoria_id&nivel_id&palabra&page&limit)
+     GET    /api/flashcards/:id            → detalle
+     POST   /api/flashcards                → crear { palabra, descripcion, imagen_url, video_url, categoria_id, nivel_id }
+     PUT    /api/flashcards/:id            → editar
+     DELETE /api/flashcards/:id            → soft delete
+     GET    /api/alumnos                   → listar alumnos (legacy)
+     POST   /api/alumnos                   → crear alumno (legacy)
+     DELETE /api/alumnos/:id               → soft delete (legacy)
+
+   ANALÍTICAS GLOBALES (requiere auth):
+     GET /api/progreso/analiticas          → stats basadas en Sesion (sesiones anónimas):
+       { totalAlumnos (sesiones), alumnosActivos (7d), sesionesHoy, palabrasTotales,
+         calidadFlashcards, actividadSemanal, distribucionCalif }
+
+   CLOUDINARY (requiere auth + profesor):
+     GET  /api/upload/status               → { configurado, cloud_name }
+     POST /api/upload/signature            → { signature, timestamp, cloud_name, api_key, folder }
+
+   HEALTH:
+     GET /api/health                       → { status, modulo, database }
+
+6. FLUJO DE LA APP (público)
+
+   1. Niño abre la app → ve Inicio con juegos disponibles
+   2. Selecciona categoría y juego → juega
+   3. Cada acierto/fallo se registra en sesión anónima (sessionId en sessionStorage, deviceId en localStorage)
+   4. Al terminar un juego → se registra juego completado
+   5. Las stats se muestran en Inicio y FinSesion
+   6. Profesor accede vía /admin-login → gestiona contenido y ve analíticas globales
+
+7. RUTAS DEL FRONTEND (Rediseño)
+
+   PÚBLICAS:
+     /                          → Inicio (juegos disponibles, stats de sesión)
+     /diccionario               → Diccionario con búsqueda y filtros
+     /diccionario/:id           → Detalle de palabra
+     /juegos                    → Hub de juegos (seleccionar categoría)
+     /juegos/flashcards         → Juego de flashcards
+     /juegos/quiz               → Juego de quiz
+     /juegos/memoria            → Juego de memoria
+     /juegos/unir               → Juego de unir
+     /juegos/fin                → Fin de sesión con estadísticas
+
+   ADMIN (requiere login):
+     /admin-login               → Login de profesor
+     /admin                     → Dashboard con stats globales
+     /admin/categorias          → CRUD categorías
+     /admin/niveles             → CRUD niveles
+     /admin/flashcards          → Lista de flashcards
+     /admin/flashcards/nueva    → Crear flashcard
+     /admin/flashcards/:id/editar → Editar flashcard
+     /admin/alumnos             → Alumnos (legacy)
+     /admin/analytics           → Analíticas detalladas
+
+8. COMPONENTES UI DISPONIBLES (shadcn/ui + Tailwind)
+
+   47 componentes en Rediseño de página web/src/app/components/ui/:
+   button, input, select, textarea, label, card, dialog, dropdown-menu,
+   form, progress, tabs, badge, table, scroll-area, separator, sheet,
+   skeleton, switch, tooltip, alert, avatar, checkbox, popover, etc.
+
+   Colores del tema (CSS variables en theme.css):
+   --cream: #FFF8F0    (fondo)
+   --green-primary: #2F9F7B (verde principal)
+   --beige-border: #E8D5C4 (bordes)
+   --text-dark: #1A1A2E (texto)
+   --yellow-accent: #F7C948 (acento)
+
+9. ESTADO ACTUAL DEL PROYECTO (Junio 2026)
+
+   ✅ BACKEND (modulo-palabras/) — COMPLETO
+   - CRUD categorías, niveles, flashcards con validaciones
+   - Endpoints públicos (/api/public/*)
+   - Sesiones anónimas (/api/sesiones/*)
+   - Login de profesor con JWT en cookie httpOnly
+   - Analíticas globales basadas en Sesion (no por profesor)
+   - Cloudinary upload con firma del lado servidor
+   - Seguridad: helmet, rate limiting, CORS, errorHandler, soft-delete
+   - Validación FK, cascade soft-delete en categorías
+
+    ✅ FRONTEND (Rediseño de página web/) — FUNCIONAL
+    - 16 páginas conectadas a API real (ninguna usa mockData)
+    - Inicio con categorías y stats de sesión desde API
+    - Diccionario con búsqueda, filtros y paginación
+    - 4 juegos (Flashcards, Quiz, Memoria, Unir) con datos reales
+    - Sesiones anónimas (sessionId + deviceId en localStorage)
+    - Admin login con checkAuth()
+    - Dashboard con analíticas globales (sesiones, actividad semanal, distribución)
+    - CRUD completo de categorías (crear, editar, eliminar)
+    - CRUD completo de niveles (crear, editar, eliminar)
+    - CRUD completo de flashcards (crear, editar, eliminar)
+    - Formulario de flashcard con subida de imagen/video a Cloudinary
+    - Componentes UI: Tailwind v4 + shadcn/ui (47 componentes)
+    - Efectos de sonido (Web Audio API)
+    - Diseño responsive mobile-first
+    - Code splitting con lazy loading para navegación instantánea
+
+   ⏸️ SHELL (shell/) — LEGACY (no se usa, mantener como referencia)
+   - Tenía login de alumnos, SM-2, gamificación, avatares, mascota SVG
+   - Ya no es relevante para el nuevo flujo público
+
+10. CLOUDINARY — CONFIGURACIÓN
+
+    Cloud name: dwsjjbayo
+    API Key:    695734759338194
+    API Secret: JEqpCvYCrLf8YyQAsTEciRF2Le8
+
+    Las credenciales están en modulo-palabras/.env (gitignorado).
+    El .env.example tiene las mismas credenciales (comentadas) como referencia.
+    El frontend NO necesita credenciales de Cloudinary — usa el endpoint
+    POST /api/upload/signature que genera una firma temporal del lado servidor.
+
+    Flujo de subida:
+    1. Admin autenticado → CloudinaryUpload.tsx abre selector de archivos
+    2. Llama a POST /api/upload/signature → recibe { signature, timestamp, cloud_name, api_key, folder }
+    3. Sube el archivo directo a Cloudinary usando esos datos
+    4. Recibe secure_url y lo guarda en la flashcard
+
+    Almacenamiento:
+    - 5000 palabras con video MP4 (~200-400 KB c/u) = ~1-2 GB
+    - Free tier de Cloudinary: 25 GB → alcanza para 10-20x eso
+    - Cloudinary optimiza automáticamente (WebP, AVIF, compresión)
+    - CDN global incluido — rápido para cualquier usuario
+
+11. PENDIENTE / MEJORAS FUTURAS
+
+    [ ] Sistema "palabras aprendidas" — omitir palabras ya dominadas en rondas futuras
+    [ ] Exponer filtro nivel_id en JuegosHub junto al selector de categoría
+    [ ] Modo oscuro
+    [ ] Tests de integración
+    [ ] Rotar credenciales de MongoDB y JWT (expuestas en historial git)
+    [ ] Agregar IP actual a whitelist de MongoDB Atlas
+    [ ] Migrar shell/.env a .gitignore (actualmente EXPUESTO)
+
+12. CAMBIOS RECIENTES (Junio 2026)
+
+    --- Mejora Admin: Paginación en Flashcards y Alumnos ---
+    AdminFlashcards.tsx: Se agregó paginación (10 por página) con controles
+    ◀ 1 2 3 ... N ▶. La búsqueda ahora se envía al backend como parámetro
+    `palabra` y resetea la página a 1 al cambiar. Se creó componente
+    Pagination.tsx reutilizable.
+
+    AdminAlumnos.tsx: Misma paginación (10 por página) usando Pagination.tsx.
+
+    --- Mejora Admin: Selector de emojis para categorías ---
+    AdminCategorias.tsx: Se agregó un grid de 40 emojis comunes debajo del
+    input de icono. Al hacer clic en un emoji se selecciona automáticamente.
+    El emoji activo queda resaltado en verde. Sin librerías externas.
+
+    --- Mejora Admin: Niveles agrupados por categoría ---
+    AdminNiveles.tsx: Los niveles ahora se muestran agrupados por categoría
+    en cards separadas con header (ej: "🐕 Animales" con sus niveles dentro,
+    luego "🍕 Comida" con los suyos). Se usa useMemo para agrupar niveles
+    por categoria_id. El formulario de crear mantiene el selector de categoría.
+
+    --- Optimización 1: Code Splitting con lazy loading ---
+    routes.tsx: Todas las importaciones de páginas cambiaron de static a
+    React.lazy(() => import(...)). Cada página es ahora un chunk separado
+    que se descarga solo cuando el usuario navega a ella.
+    App.tsx: RouterProvider envuelto en <Suspense fallback={<PageLoader />}>
+    PageLoader.tsx: Nuevo componente simple (🤟 animado + "Cargando...").
+
+    Impacto: navegación a /diccionario y otras páginas pasa de ~2s a
+    instantáneo (~100-200ms) porque el bundle principal se reduce de
+    ~500 KB a ~50 KB. Los chunks de página se descargan bajo demanda.
+
+    --- Optimización 2: JuegoUnir — nuevo flujo "seña primero → palabra después" ---
+    ANTES: Videos autoplay simultáneos en todas las señas. Niño veía imagen del
+    objeto en la columna izquierda y podía conectar directamente. Videos pesados
+    con thumbnail Cloudinary de baja calidad.
+
+    AHORA:
+    - La columna derecha (señas) muestra inicialmente solo 🤟 "Toca para ver"
+      (sin imagen, sin video). El niño no puede adivinar la respuesta visualmente.
+    - Al tocar una seña: se carga y reproduce SOLO ese video (calidad original,
+      sin thumbnails). Es el ÚNICO video activo en todo momento.
+    - Mientras el video carga, la columna izquierda (palabras) muestra
+      "⏳ Preparando..." y los botones están desactivados.
+    - Cuando el video está listo (onLoadedData), las palabras se activan y
+      el niño toca la palabra que cree correcta.
+    - Si acierta: animación green pulse 400ms + Check ✅ + ambos se marcan
+      como conectados. El video se reemplaza por imagen estática.
+    - Si falla: feedback rojo 600ms + "❌ Intenta otra" en la palabra, el
+      video SIGUE sonando y el niño puede tocar otra palabra. Sigue intentando
+      hasta acertar.
+    - Al completar todos los pares, navega a /juegos/fin con stats.
+
+    Rendimiento: solo 1 video cargado a la vez vs antes 5 simultáneos.
+
+    --- Calidad original restaurada en todos los juegos ---
+    JuegoFlashcards.tsx: Se eliminó getThumbnailUrl. Las opciones usan
+    option.videoUrl directo (calidad original 200-400 KB por video).
+    JuegoQuiz.tsx: Se eliminó getThumbnailUrl. Usa currentPalabra.videoUrl
+    directo.
+    src/app/lib/cloudinary.ts: Se mantiene el helper getThumbnailUrl por si
+    se necesita en el futuro, pero no se importa en ningún juego.
+
+    --- Optimización 3: JuegoFlashcards — 1 video a la vez con preview ---
+    ANTES: 4 videos autoPlay muted loop simultáneos en grid 2×2. El
+    decodificador se saturaba y los videos se ponían bruscos a los pocos
+    segundos. Skeleton mientras cargaban (poco útil si todos cargan a la vez).
+
+    AHORA: Cada opción muestra 🤟 genérico (placeholder estático, sin video).
+    Debajo de cada una hay 2 botones:
+      [👁️ Ver]  → carga y reproduce SOLO ese video en la tarjeta
+      [✓ Elegir] → selecciona esta como respuesta sin necesidad de ver video
+    Cuando un video está activo, los botones cambian a:
+      [✓ Elegir] [✕ Cerrar]  → elegir esa respuesta o cerrar preview
+    Solo 1 video activo en todo momento (si abres otro preview, el anterior
+    se cierra). El video se remonta con key={previewId} para reinicio limpio.
+
+    --- Optimización 4: JuegoMemoria — sin video en cartas acertadas + transiciones suaves ---
+    ANTES: Cuando un par se acertaba, isMatched=true pero el <video> seguía
+    reproduciéndose con autoPlay muted loop. 3 pares acertados = 6 cartas con
+    video = 3 videos corriendo sin parar. Cuando fallaban, las cartas se
+    volteaban de regreso en 1.5s y el video se cortaba en seco.
+
+    AHORA: 
+    - Cuando isMatched: la carta muestra solo ✅ + texto de la palabra (sin video).
+      El video solo se renderiza cuando isFlipped && !isMatched.
+    - Timeouts aumentados: acierto → 2.5s, fallo → 2.5s (antes 2s y 1.5s).
+      El niño ve el par por más tiempo antes de que pase al siguiente estado.
+    - Contenido revelado envuelto en <AnimatePresence> con exit animation
+      (fade + scale 0.8) para que al fallar el video se desvanezca suavemente
+      en vez de desaparecer instantáneo.
+    - layout prop en motion.button para transiciones fluidas de layout.
+
+    --- Mejora Diccionario: filtro de niveles dinámico ---
+    Diccionario.tsx: 
+    - ANTES: el dropdown de niveles mostraba todos los niveles de todas las
+      categorías → "Básico, Básico, Básico..." repetido.
+    - AHORA: el filtro de nivel se deshabilita cuando "Todas las categorías"
+      está seleccionado (placeholder: "Elige una categoría primero").
+    - Al seleccionar una categoría específica, el dropdown de nivel se activa
+      y muestra SOLO los niveles pertenecientes a esa categoría.
+    - Se usa useMemo para filtrar niveles por categoria_id.
+    - Al cambiar de categoría, el nivel se resetea a "todos".
+
+    --- Cloudinary: compresión controlada al subir videos ---
+    Problema: cada video pesa ~10 MB en disco. 5000 × 10 MB = 50 GB,
+    supera el free tier (25 GB).
+    Solución: Se agregaron parámetros de compresión a la subida:
+    quality: "auto:good" (compresión perceptual sin pérdida visible)
+    bitrate: "500k" (bitrate máximo controlado)
+    Archivos modificados:
+    - modulo-palabras/src/routes/upload.js:34-35
+    - Rediseño de página web/src/app/components/CloudinaryUpload.tsx:52-53
+    Nota: Requiere reiniciar backend (npm run dev).
+    Los 30 videos ya subidos (300 MB) se quedan como están.
+
+13. NOTAS IMPORTANTES
+
+    - El frontend activo es Rediseño de página web/ (no shell/)
+    - La app es 100% pública para niños — no hay login de alumnos
+    - Las sesiones son anónimas (sessionStorage + localStorage)
+    - El profesor se autentica en /admin-login para gestionar contenido
+    - Las analíticas ahora son GLOBALES basadas en el modelo Sesion
+    - Cloudinary: si no está configurado en .env, el upload muestra inputs URL manuales como fallback
+    - Variables de entorno del frontend: VITE_API_URL=http://localhost:3001/api
+    - El backend requiere MongoDB Atlas con IP en whitelist
+    - Para desarrollar: npm run dev en modulo-palabras/ y Rediseño de página web/
+    - Express 5: importación de router funciona distinto a Express 4
+    - La ruta /reordenar/lote debe declararse ANTES que /:id en Express
+    - soft-delete: deletedAt en todos los modelos, nunca delete físico
+    - .env.example en modulo-palabras/ aún contiene credenciales reales (NO subir a git)
+    - shell/.env NO está en .gitignore (corregir)
