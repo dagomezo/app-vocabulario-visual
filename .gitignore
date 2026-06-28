@@ -21,8 +21,8 @@ npm-debug.log*
 .cursor/
 agent-transcripts/
 
-# Assets locales de referencia (copias ya están en shell/src/assets)
-imagenes/
+# Assets locales de referencia en la raíz (las del frontend están en shell/src/assets/imagenes/)
+/imagenes/
 
 # Documentos personales / no del proyecto
 modulo-palabras/img/
